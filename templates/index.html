@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multi-Agent AI System</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>🤖 Multi-Agent AI System</h1>
+        <p class="subtitle">Collaborative AI agents working together to solve objectives</p>
+      </header>
+
+      <section class="card input-section">
+        <h2>Objective</h2>
+        <form id="objective-form">
+          <textarea
+            id="objective-input"
+            placeholder="Enter your objective (e.g., 'Analyze market trends for tech companies and create summary')"
+            rows="3"
+          ></textarea>
+          <button type="submit" class="btn-primary">Execute with Multi-Agent System</button>
+        </form>
+        <div id="execution-message" class="message"></div>
+      </section>
+
+      <div class="grid-layout">
+        <section class="card agents-panel">
+          <h2>👥 Agent Status</h2>
+          <div id="agents-container" class="agents-grid"></div>
+        </section>
+
+        <section class="card execution-panel">
+          <h2>⚙️ Execution Log</h2>
+          <div id="execution-log" class="log-container"></div>
+        </section>
+      </div>
+
+      <section class="card">
+        <h2>💬 Agent Messages</h2>
+        <div class="tabs">
+          <button class="tab-btn active" data-agent="planner">Planner</button>
+          <button class="tab-btn" data-agent="researcher">Researcher</button>
+          <button class="tab-btn" data-agent="executor">Executor</button>
+          <button class="tab-btn" data-agent="critic">Critic</button>
+        </div>
+        <div id="messages-container" class="messages-panel"></div>
+      </section>
+
+      <section class="card" id="results-section" style="display: none">
+        <h2>✅ Final Results</h2>
+        <div id="results-container"></div>
+      </section>
+    </div>
+
+    <script>
+      const objectiveForm = document.getElementById("objective-form");
+      const objectiveInput = document.getElementById("objective-input");
+      const executionMessage = document.getElementById("execution-message");
+      const agentsContainer = document.getElementById("agents-container");
+      const executionLog = document.getElementById("execution-log");
+      const messagesContainer = document.getElementById("messages-container");
+      const resultsSection = document.getElementById("results-section");
+      const resultsContainer = document.getElementById("results-container");
+
+      const agentColors = {
+        planner: "#667eea",
+        researcher: "#f093fb",
+        executor: "#4facfe",
+        critic: "#43e97b",
+      };
+
+      objectiveForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const objective = objectiveInput.value.trim();
+        if (!objective) {
+          executionMessage.textContent = "Please enter an objective.";
+          return;
+        }
+
+        executionMessage.textContent = "🔄 Executing...";
+        objectiveForm.querySelector("button").disabled = true;
+
+        try {
+          const response = await fetch("/api/execute", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ objective }),
+          });
+
+          const result = await response.json();
+          if (response.ok) {
+            executionMessage.textContent = "✅ Execution completed!";
+            displayResults(result);
+            await updateAgentsStatus();
+            displayExecutionLog(result.execution_log);
+          } else {
+            executionMessage.textContent = `❌ ${result.error}`;
+          }
+        } catch (error) {
+          executionMessage.textContent = `❌ Error: ${error.message}`;
+        } finally {
+          objectiveForm.querySelector("button").disabled = false;
+        }
+      });
+
+      async function updateAgentsStatus() {
+        try {
+          const response = await fetch("/api/agents-status");
+          const agents = await response.json();
+          displayAgentsStatus(agents);
+        } catch (error) {
+          console.error("Error updating agents status:", error);
+        }
+      }
+
+      function displayAgentsStatus(agents) {
+        agentsContainer.innerHTML = agents
+          .map(
+            (agent) => `
+          <div class="agent-card" style="border-left: 4px solid ${agentColors[agent.role]}">
+            <h3>${agent.name}</h3>
+            <p class="role">${agent.role.toUpperCase()}</p>
+            <p class="status">Status: <span class="status-badge">${agent.status}</span></p>
+            <p class="messages-count">Messages: ${agent.messages.length}</p>
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      function displayExecutionLog(log) {
+        executionLog.innerHTML = log
+          .map(
+            (entry) => `
+          <div class="log-entry">
+            <span class="log-agent" style="background: ${agentColors[entry.agent.toLowerCase()]}">${entry.agent}</span>
+            <span class="log-step">${entry.step}</span>
+            <p class="log-result">${entry.result}</p>
+          </div>
+        `
+          )
+          .join("");
+      }
+
+      function displayResults(result) {
+        resultsContainer.innerHTML = `
+          <div class="result-item">
+            <h3>Objective: ${result.objective}</h3>
+            <div class="tasks-list">
+              ${result.tasks
+                .map(
+                  (task) => `
+                <div class="task-item">
+                  <h4>${task.title}</h4>
+                  <p class="task-status">${task.status}</p>
+                  <p>${task.result || "Processing..."}</p>
+                </div>
+              `
+                )
+                .join("")}
+            </div>
+            <div class="feedback-box">
+              <h4>Critic Feedback:</h4>
+              <p>${result.final_feedback}</p>
+            </div>
+          </div>
+        `;
+        resultsSection.style.display = "block";
+      }
+
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+          e.target.classList.add("active");
+          await displayAgentMessages(e.target.dataset.agent);
+        });
+      });
+
+      async function displayAgentMessages(agentName) {
+        try {
+          const response = await fetch(`/api/agent-messages/${agentName}`);
+          const data = await response.json();
+          messagesContainer.innerHTML = data.messages
+            .slice(-5)
+            .map(
+              (msg) => `
+            <div class="message-item">
+              <p class="message-meta"><strong>${msg.agent}</strong> | ${msg.action || "action"}</p>
+              <p class="message-text">${msg.message}</p>
+              ${msg.tools_used.length > 0 ? `<p class="tools">Tools: ${msg.tools_used.join(", ")}</p>` : ""}
+            </div>
+          `
+            )
+            .join("");
+        } catch (error) {
+          messagesContainer.textContent = "Error loading messages.";
+        }
+      }
+
+      displayAgentMessages("planner");
+    </script>
+  </body>
+</html>
